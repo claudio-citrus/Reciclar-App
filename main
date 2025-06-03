@@ -1,0 +1,403 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:http/http.dart' as http;
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Recicla App',
+      home: ReciclaHomePage(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class ReciclaHomePage extends StatefulWidget {
+  @override
+  _ReciclaHomePageState createState() => _ReciclaHomePageState();
+}
+
+class _ReciclaHomePageState extends State<ReciclaHomePage> {
+  TextEditingController controller = TextEditingController();
+  TextEditingController cidadeController = TextEditingController();
+  List<Map<String, dynamic>> resultadosBusca = [];
+  bool buscou = false;
+
+  final List<Map<String, dynamic>> produtos = [
+    {
+      'nome': 'Garrafa PET 500ml',
+      'categoria': 'Plástico',
+      'material': 'PET',
+      'pode_reciclar': true,
+      'dicas': 'Lave; Retire o rótulo; Descarte em plástico',
+    },
+    {
+      'nome': 'Garrafa PET 2 Litros',
+      'categoria': 'Plástico',
+      'material': 'PET',
+      'pode_reciclar': true,
+      'dicas': 'Lave bem; Retire o rótulo; Aperte para economizar espaço',
+    },
+    {
+      'nome': 'Lata de Alumínio',
+      'categoria': 'Metal',
+      'material': 'Alumínio',
+      'pode_reciclar': true,
+      'dicas': 'Esvazie; Amasse; Descarte em metais',
+    },
+    {
+      'nome': 'Garrafa de Vidro 600ml',
+      'categoria': 'Vidro',
+      'material': 'Vidro',
+      'pode_reciclar': true,
+      'dicas': 'Lave bem; Tire rótulo e tampa; Descarte em vidro.',
+    },
+    {
+      'nome': 'Garrafa de Vidro 1 Litro',
+      'categoria': 'Vidro',
+      'material': 'Vidro',
+      'pode_reciclar': true,
+      'dicas': 'Lave; Retire rótulo; Sem tampa; Descarte em vidro.',
+    },
+  ];
+
+  void buscarProduto(String termo) {
+    final resultado = produtos
+        .where((produto) => produto['nome']
+            .toString()
+            .toLowerCase()
+            .contains(termo.toLowerCase()))
+        .toList();
+
+    setState(() {
+      resultadosBusca = resultado;
+      buscou = true;
+    });
+  }
+
+  void limparBusca() {
+    controller.clear();
+    setState(() {
+      resultadosBusca = [];
+      buscou = false;
+    });
+  }
+
+  Future<LatLng?> buscarCoordenadas(String cidade) async {
+    final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=$cidade&format=json&limit=1');
+
+    final response = await http.get(uri, headers: {
+      'User-Agent': 'recicla_app/1.0',
+    });
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      if (data.isNotEmpty) {
+        final lat = double.parse(data[0]['lat']);
+        final lon = double.parse(data[0]['lon']);
+        return LatLng(lat, lon);
+      }
+    }
+    return null;
+  }
+
+  Widget buildResultado() {
+    if (!buscou) return Container();
+
+    if (resultadosBusca.isEmpty) {
+      return Text(
+        "Produto não cadastrado.",
+        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+      );
+    }
+
+    return Expanded(
+      child: ListView.builder(
+        itemCount: resultadosBusca.length,
+        itemBuilder: (context, index) {
+          final produto = resultadosBusca[index];
+          return Card(
+            child: ListTile(
+              title: Text(produto['nome']),
+              subtitle: Text("Categoria: ${produto['categoria']}"),
+              trailing: Icon(Icons.arrow_forward_ios),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DetalhesProduto(
+                      produto: produto,
+                      cidade: cidadeController.text,
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Recicla App"),
+        backgroundColor: Colors.green,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            tooltip: 'Limpar Busca',
+            onPressed: limparBusca,
+          )
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: cidadeController,
+                    decoration: InputDecoration(
+                      labelText: 'Cidade',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 10),
+                IconButton(
+                  icon: Icon(Icons.map, color: Colors.green),
+                  tooltip: 'Ver no mapa',
+                  onPressed: () async {
+                    if (cidadeController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Digite uma cidade')),
+                      );
+                      return;
+                    }
+
+                    final coordenadas = await buscarCoordenadas(cidadeController.text);
+                    if (coordenadas != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MapaPage(
+                            cidade: cidadeController.text,
+                            cidadeLatLng: coordenadas,
+                            pontosDeColeta: [
+                              coordenadas,
+                              LatLng(coordenadas.latitude + 0.002,
+                                  coordenadas.longitude + 0.002),
+                              LatLng(coordenadas.latitude - 0.002,
+                                  coordenadas.longitude - 0.002),
+                            ],
+                          ),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Cidade não encontrada')),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+            SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                labelText: 'Buscar Produto',
+                border: OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: Icon(Icons.search),
+                  onPressed: () {
+                    buscarProduto(controller.text);
+                  },
+                ),
+              ),
+              onSubmitted: (value) {
+                buscarProduto(value);
+              },
+            ),
+            SizedBox(height: 10),
+            buildResultado(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class DetalhesProduto extends StatelessWidget {
+  final Map<String, dynamic> produto;
+  final String cidade;
+
+  DetalhesProduto({
+    required this.produto,
+    required this.cidade,
+  });
+
+  Future<LatLng?> buscarCoordenadas(String cidade) async {
+    final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=$cidade&format=json&limit=1');
+
+    final response = await http.get(uri, headers: {
+      'User-Agent': 'recicla_app/1.0',
+    });
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      if (data.isNotEmpty) {
+        final lat = double.parse(data[0]['lat']);
+        final lon = double.parse(data[0]['lon']);
+        return LatLng(lat, lon);
+      }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(produto['nome']),
+        backgroundColor: Colors.green,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Card(
+          color: Colors.green[50],
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  produto['nome'],
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 10),
+                Text("Categoria: ${produto['categoria']}"),
+                Text("Material: ${produto['material']}"),
+                Text("Pode Reciclar: ${produto['pode_reciclar'] ? 'Sim' : 'Não'}"),
+                SizedBox(height: 10),
+                Text("Dicas:", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(produto['dicas']),
+                SizedBox(height: 20),
+                Row(
+                  children: [
+                    Icon(Icons.map, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text(
+                      'Ver no mapa',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Spacer(),
+                    IconButton(
+                      icon: Icon(Icons.location_on, color: Colors.green),
+                      tooltip: 'Abrir mapa',
+                      onPressed: () async {
+                        if (cidade.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Digite uma cidade na tela anterior')),
+                          );
+                          return;
+                        }
+
+                        final coordenadas = await buscarCoordenadas(cidade);
+                        if (coordenadas != null) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => MapaPage(
+                                cidade: cidade,
+                                cidadeLatLng: coordenadas,
+                                pontosDeColeta: [
+                                  coordenadas,
+                                  LatLng(coordenadas.latitude + 0.002,
+                                      coordenadas.longitude + 0.002),
+                                  LatLng(coordenadas.latitude - 0.002,
+                                      coordenadas.longitude - 0.002),
+                                ],
+                              ),
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Cidade não encontrada')),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MapaPage extends StatelessWidget {
+  final String cidade;
+  final LatLng cidadeLatLng;
+  final List<LatLng> pontosDeColeta;
+
+  MapaPage({
+    required this.cidade,
+    required this.cidadeLatLng,
+    required this.pontosDeColeta,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Pontos de Reciclagem - $cidade'),
+        backgroundColor: Colors.green,
+      ),
+      body: FlutterMap(
+        options: MapOptions(
+          center: cidadeLatLng,
+          zoom: 13.0,
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.example.app',
+          ),
+          MarkerLayer(
+            markers: pontosDeColeta.map((ponto) {
+              return Marker(
+                width: 60,
+                height: 60,
+                point: ponto,
+                child: Icon(
+                  Icons.location_on,
+                  color: Colors.green,
+                  size: 40,
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
