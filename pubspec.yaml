@@ -1,0 +1,23 @@
+name: recicla_app_sqlite
+description: App Flutter com SQLite local para reciclagem
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.17.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  diacritic: ^0.1.3
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  flutter_map: ^6.2.0
+  latlong2: ^0.9.0
+  geolocator: ^11.1.0
+  http: ^1.2.1
+
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
